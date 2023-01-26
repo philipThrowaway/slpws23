@@ -1,0 +1,121 @@
+@import url('https://rsms.me/inter/inter.css');
+html { font-family: 'Inter', sans-serif; }
+
+@supports (font-variation-settings: normal) {
+  html { font-family: 'Inter var', sans-serif; }
+}
+
+:root {
+    --accent: #a65fec
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+  
+html, body {
+    height: 100%;
+    width: 100%;
+
+    background-color: black;
+}
+
+h1, h2, h3, h4, h5, p {
+    font-family: 'Inter var', sans-serif;
+    color: white;
+}
+
+nav#ui {
+    overflow: hidden;
+
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+
+    padding: 1.5em 2em 1.5em 2em;
+
+    border-bottom: 1px solid white;
+}
+
+nav#ui h1 {
+    font-weight: 800;
+    font-size: 2rem;
+}
+
+nav#ui div#links a {
+    font-weight: 600;
+    font-size: 1rem;
+    text-decoration: none;
+    color: var(--accent);
+    opacity: 0.8;
+}
+
+nav#ui div#links a:hover {
+    opacity: 1;
+    transition: 0.2s;
+}
+
+form.modul {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+    width: 500px;
+}
+
+form.modul a {
+    color: white;
+    opacity: 0.4;
+}
+
+form.modul input {
+    outline: none;
+}
+
+form.modul input[type=text] {
+    background-color: transparent;
+    padding: 1em;
+
+    font-family: 'Inter var', sans-serif;
+    font-weight: 600;
+    color: white;
+
+    border: 2px solid white;
+    border-radius: 0.5em;
+}
+
+form.modul input[type=text]::placeholder {
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+form.modul input[type=button], input[type=submit], input[type=reset] {
+    background-color: white;
+    padding: 1em;
+    cursor: pointer;
+
+    font-family: 'Inter var', sans-serif;
+    font-weight: 800;
+    color: black;
+    text-decoration: none;
+
+    border: none;
+    border-radius: 0.5em;
+}
+
+form.modul input:focus {
+    border: 2px solid var(--accent);
+    transition: 0.2s;
+}
+
+form.modul input[type=button]:hover, input[type=submit]:hover, input[type=reset]:hover {
+    background-color: var(--accent);
+    transition: 0.2s;
+}
