@@ -79,7 +79,7 @@ form.modul input {
     outline: none;
 }
 
-form.modul input[type=text] {
+form.modul input[type=text], input[type=password] {
     background-color: transparent;
     padding: 1em;
 
@@ -91,7 +91,7 @@ form.modul input[type=text] {
     border-radius: 0.5em;
 }
 
-form.modul input[type=text]::placeholder {
+form.modul input[type=text]::placeholder input[type=password]::placeholder {
     font-weight: 600;
     color: rgba(255, 255, 255, 0.4);
 }
