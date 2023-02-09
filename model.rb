@@ -10,11 +10,12 @@ module Database
 end
 
 module Auth
-    def self.init()
+    def self.init(session)
+        @session = session
     end
 
     def self.is_authenticated?()
-        if session[:id] then true else false end
+        if @session[:id] then true else false end
     end
 
     def self.redirect(url)

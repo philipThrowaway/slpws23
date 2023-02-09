@@ -19,7 +19,7 @@ html, body {
     height: 100%;
     width: 100%;
 
-    background-color: black;
+    background-color: #000;
 }
 
 h1, h2, h3, h4, h5, p {
@@ -45,12 +45,17 @@ nav#ui h1 {
     font-size: 2rem;
 }
 
+nav#ui div#links {
+    display: flex;
+    gap: 1em;
+}
+
 nav#ui div#links a {
     font-weight: 600;
     font-size: 1rem;
     text-decoration: none;
-    color: var(--accent);
-    opacity: 0.8;
+    color: white;
+    opacity: 0.5;
 }
 
 nav#ui div#links a:hover {
@@ -58,7 +63,17 @@ nav#ui div#links a:hover {
     transition: 0.2s;
 }
 
-form.modul {
+.extra_space {
+    gap: 3em !important;
+}
+
+.modul_min {
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+}
+
+.modul {
     position: fixed;
     left: 50%;
     top: 50%;
@@ -70,16 +85,16 @@ form.modul {
     width: 500px;
 }
 
-form.modul a {
+.modul a {
     color: white;
     opacity: 0.4;
 }
 
-form.modul input {
+.modul input {
     outline: none;
 }
 
-form.modul input[type=text], input[type=password] {
+.modul input[type=text], input[type=password] {
     background-color: transparent;
     padding: 1em;
 
@@ -91,12 +106,12 @@ form.modul input[type=text], input[type=password] {
     border-radius: 0.5em;
 }
 
-form.modul input[type=text]::placeholder input[type=password]::placeholder {
+.modul input[type=text]::placeholder input[type=password]::placeholder {
     font-weight: 600;
     color: rgba(255, 255, 255, 0.4);
 }
 
-form.modul input[type=button], input[type=submit], input[type=reset] {
+.modul input[type=button], input[type=submit], input[type=reset] {
     background-color: white;
     padding: 1em;
     cursor: pointer;
@@ -110,12 +125,31 @@ form.modul input[type=button], input[type=submit], input[type=reset] {
     border-radius: 0.5em;
 }
 
-form.modul input:focus {
+.modul input[type=button]:focus, input[type=submit]:focus, input[type=reset]:focus {
+    background-color: var(--accent);
+    transition: 0.2s;
+}
+
+.modul input:focus {
     border: 2px solid var(--accent);
     transition: 0.2s;
 }
 
-form.modul input[type=button]:hover, input[type=submit]:hover, input[type=reset]:hover {
+.modul input[type=button]:hover, input[type=submit]:hover, input[type=reset]:hover {
     background-color: var(--accent);
     transition: 0.2s;
+}
+
+div#rooms {
+    display: flex;
+    width: 100%;
+    height: 100%;
+}
+
+div#rooms div#sidebar {
+    display: flex;
+    flex-direction: row;
+    height: 100%;
+    border-right: 1px solid white;
+    padding: 1em;
 }

@@ -1,4 +1,9 @@
 form.modul action="/rooms" method="post"
-    input type="text" name="name" placeholder="The name of the group" required=true
-    input type="text" name="password" placeholder="The password for the group" required=true
+    h2 Create a new chatroom
+    input type="text" name="name" placeholder="The name of the room" required=true
+    input type="text" name="password" placeholder="The password for the room" required=true
+    - if @tags
+        select name="tags" multiple=true
+            - @tags.each do |tag|
+                option value="#{tag['id']}" #{tag['label']}
     input type="submit" value="Create"
