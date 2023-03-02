@@ -2,3 +2,10 @@ div#rooms
     div#sidebar
         form action="/rooms/new" method="get"
             input type="submit" value="New"
+        form action="/rooms/new" method="get"
+            input type="submit" value="Join"
+    - if @rooms
+        - @rooms.each do |room|
+            div.card
+                h2 = room['room_name']
+                p = room['owner_username']
