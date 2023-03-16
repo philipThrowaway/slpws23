@@ -5,7 +5,15 @@ div#rooms
         form action="/rooms/new" method="get"
             input type="submit" value="Join"
     - if @rooms
-        - @rooms.each do |room|
-            div.card
-                h2 = room['room_name']
-                p = room['owner_username']
+        - if @tags
+            - @tags.each do |tag|
+                / implement filter system
+        div#room_display
+            - @rooms.each do |room|
+                a.room_card href="/rooms/#{room['room_id']}"
+                    h2 = room['room_name']
+                    p = "Owner: #{room['owner_username']}"
+                    - if room['member_count'] > 1
+                        p = "#{room['member_count']} Members"
+                    - else
+                        p = "#{room['member_count']} Member"

@@ -8,7 +8,7 @@ require_relative './model.rb'
 enable :sessions
 DB_PATH ||= 'db/database.db'
 
-AUTH = ['/', '/error', '/login', '/register', '/users', '/retry']
+AUTH = ['/', '', '/login', '/register', '/users', '/retry']
 
 before do 
     db = Database::connect(DB_PATH)
@@ -24,6 +24,7 @@ before do
         session[:error] = "You need to be logged in"
         redirect('/error')
     elsif (session[:id] != nil) && AUTH.include?(request.path_info)
+        p "redirecting to previous action"
         redirect(session[:prev_action])
     end
 end
@@ -158,9 +159,12 @@ get('/rooms/') do
         LEFT JOIN room_user_relation AS rur ON rur.room_id = r.id
         GROUP BY r.id")
 
+    p @rooms
+
+    @tags = db.execute("SELECT * FROM tags")
+
     slim(:"rooms/index")
 end
-
 
 get('/rooms/new') do
     session[:prev_action] = request.path_info
@@ -190,6 +194,12 @@ post('/rooms') do
         redirect('/error')
     end
 
+    if tag_ids.nil?
+        p "no tags provided"
+        session[:error] = "A room needs to have tags."
+        redirect('/error')
+    end
+
     pw_digest = BCrypt::Password.create(password)
 
     existing_room = db.execute("SELECT id FROM room WHERE name = ?", name).first
@@ -202,10 +212,11 @@ post('/rooms') do
 
     db.execute("INSERT INTO room(name, pw_digest, owner_id) VALUES (?, ?, ?)", name, pw_digest, owner_id)
     room_id = db.last_insert_row_id
+
     tag_ids.each do |tag_id|
         tag = tag_id.to_i
         db.execute("INSERT INTO room_tags_relation(room_id, tag_id) VALUES (?, ?)", room_id, tag)
-    end      
+    end    
 
     # maybe add a check?
     db.execute("INSERT INTO room_user_relation(room_id, user_id) VALUES (?, ?)", room_id, owner_id)
@@ -213,6 +224,87 @@ post('/rooms') do
     redirect('/rooms/')
 end
 
+get('/rooms/:id') do 
+    session[:prev_action] = request.path_info
+    user_id = session[:id].to_i
+
+    if user_id
+        @room_id = params[:id].to_i
+        db = Database::connect(DB_PATH)
+        is_member = db.execute("SELECT 1 FROM room_user_relation WHERE room_id = ? AND user_id = ?", @room_id, user_id).first
+
+        if is_member
+            @messages = db.execute("
+                SELECT m.id AS message_id, m.room_id AS message_room_id, m.content AS message_content, m.owner_id AS message_owner
+                FROM message AS m
+                JOIN room AS r ON r.id = m.room_id
+                ")
+
+            slim(:"rooms/show")
+        else
+            p "Not a member"
+            session[:error] = "You are not a member of this room."
+            redirect('/error')
+        end
+    else
+        session[:error] = "You are not logged in."
+        redirect('/error')
+    end
+end
+
+get('/rooms/:id/edit') do 
+    session[:prev_action] = request.path_info
+    # check permissions
+end
+
+post('/rooms/:id/update') do 
+    # check permissions
+end
+
+post('/rooms/:id/delete') do 
+    # check permissions
+end
+
+post('/message') do 
+    user_id = session[:id].to_i
+
+    if user_id
+        room_id = params[:room_id].to_i
+
+        if room_id
+            db = Database::connect(DB_PATH)
+            is_member = db.execute("SELECT 1 FROM room_user_relation WHERE room_id = ? AND user_id = ?", room_id, user_id).first
+
+            if is_member
+                message_content = params[:content]
+
+                if message_content.empty?
+                    session[:error] = "Your message was empty."
+                    redirect('/error')
+                end
+
+                if message_content.length > 200
+                    p "message length"
+                    session[:error] = "The your message exceded 200 characters."
+                    redirect('/error')
+                end
+
+                db.execute("INSERT INTO message(content, room_id, owner_id) VALUES (?, ?, ?)", message_content, room_id, user_id)
+            else
+                p "Not a member"
+                session[:error] = "You are not a member of this room."
+                redirect('/error')
+            end
+        else
+            session[:error] = "No room_id found."
+            redirect('/error')
+        end
+        
+    else
+        session[:error] = "You are not logged in."
+        redirect('/error')
+    end
+end
 
 get('/admin/') do 
     session[:prev_action] = request.path_info

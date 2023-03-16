@@ -1,0 +1,6 @@
+form.modul action="/message" method="post"
+    - p @messages
+    - p @room_id
+    input type="text" name="content" placeholder="Your message..." required=true
+    input type="submit" value=">"
+    param name="room_id" value="#{@room_id}"

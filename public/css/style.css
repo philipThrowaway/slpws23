@@ -79,6 +79,12 @@ nav#ui div#links a:hover {
 }
 
 .modul {
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+}
+
+.fullscreen {
     position: fixed;
     left: 50%;
     top: 50%;
@@ -145,6 +151,37 @@ nav#ui div#links a:hover {
     transition: 0.2s;
 }
 
+.message_box {
+    display: flex;
+    flex-direction: column;
+
+    width: 100%;
+    height: 100%;
+
+    padding: 2em;
+}
+
+.message_box .display {
+    height: 100%;
+    overflow: scroll;
+}
+
+.message_box form input[type=text], input[type=password] {
+    width: 100%;
+}
+
+.message_box form {
+    display: flex;
+    flex-direction: row;
+    gap: 1em;
+    width: 100%;
+}
+
+.modul.message {
+    display: flex;
+    flex-direction: row;
+}
+
 div#rooms {
     display: flex;
     height: 100%;
@@ -157,4 +194,22 @@ div#rooms div#sidebar {
     border-right: 1px solid white;
     padding: 1em;
     gap: 1em;
+}
+
+div#room_display {
+    display: flex;
+    width: max-content;
+    height: max-content;
+    padding: 3em;
+    gap: 3em;
+}
+
+a.room_card {
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    padding: 2em;
+    gap: 1em;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 0.5em;
 }
