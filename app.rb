@@ -6,52 +6,47 @@ require 'bcrypt'
 require_relative './model.rb'
 
 enable :sessions
-DB_PATH ||= 'db/database.db'
 
+# REMEMBER TO IMPLEMENT CLEAN UP OF DATA
+# IN DATABASE IF THAT DATA IS DELETED
+
+# constants
+DB_PATH ||= 'db/database.db'
 AUTH = ['/', '', '/login', '/register', '/users', '/retry']
 
+def create_admin_user
+  db = Database::connect(DB_PATH)
+  result = db.execute("SELECT id FROM user WHERE username=?", "admin")
+  if result.empty?
+    pw_digest = BCrypt::Password.create("admin")
+    db.execute("INSERT INTO user(type, username, pw_digest) VALUES (?, ?, ?)", UserType::ADMIN, "admin", pw_digest)
+  end
+end
+
+create_admin_user
+
 before do 
-    db = Database::connect(DB_PATH)
-    result = db.execute("SELECT id FROM user WHERE username=?", "admin")
-    if result.empty?
-          pw_digest = BCrypt::Password.create("admin")
-          
-          db.execute("INSERT INTO user(username, pw_digest) VALUES (?, ?)", "admin", pw_digest)
-    end
     p request.path_info
 
-    if (session[:id] == nil) && !AUTH.include?(request.path_info)
-        session[:error] = "You need to be logged in"
-        redirect('/error')
-    elsif (session[:id] != nil) && AUTH.include?(request.path_info)
-        p "redirecting to previous action"
-        redirect(session[:prev_action])
+    if session[:id].nil? && !AUTH.include?(request.path_info) && request.path_info != '/error'
+      session[:error] = 'You need to be logged in'
+      redirect('/error')
+    elsif !session[:id].nil? && AUTH.include?(request.path_info)
+      p 'redirecting to previous action'
+      redirect(session[:prev_action])
     end
 end
 
-after do 
-    if (request.path_info != '/error')
-        # session[:prev_action] = request.path_info
-    end
-end
-
-# post eller get?
 post('/retry') do
-    p "retry detected"
-    if session[:prev_action]
-        p "previous action found"
-        redirect(session[:prev_action])
-    else
-        p "previous not action found"
-        redirect('/')
-    end
+    p 'retry detected'
+    redirect(session[:prev_action] || '/')
 end
 
 get('/error') do 
     @error_message = session[:error]
     @prev_action = session[:prev_action]
     p "previous action was: #{@prev_action}"
-    slim(:error)
+    slim :error
 end
 
 get('/') do
@@ -98,17 +93,39 @@ get('/register') do
     slim(:"users/new")
 end
 
-get('/users/') do 
-    session[:prev_action] = request.path_info
-    p "inside users"
-
+get('/users/:id') do 
     db = Database::connect(DB_PATH)
-    id = session[:id]
-    result = db.execute("SELECT * FROM user WHERE id=?", id).first
+    active_user_id = session[:id]
+    user_id = params[:id].to_i
 
+    @result = db.execute("SELECT * FROM user WHERE id=?", user_id).first
 
-    @username = result["username"]
+    if @result.nil?
+        session[:error] = "User doesn't exist"
+        redirect('/error')
+    end
 
+    @active_user_result = db.execute("SELECT * FROM user WHERE id=?", active_user_id).first
+
+    @same_user = false
+    @admin = false
+
+    if user_id == active_user_id
+        p "same user"
+        @same_user = true
+    end
+
+    p @result
+
+    if @active_user_result['type'] == UserType::ADMIN
+        p "is admin"
+        @admin = true
+    end
+
+    p @same_user
+    p @admin
+
+    session[:prev_action] = request.path_info
     slim(:"users/index")
 end
 
@@ -133,7 +150,7 @@ post('/users') do
         if (password == password_confirm)
           pw_digest = BCrypt::Password.create(password)
           
-          db.execute("INSERT INTO user(username, pw_digest) VALUES (?, ?)", username, pw_digest)
+          db.execute("INSERT INTO user(username, type, pw_digest) VALUES (?, ?)", username, UserType::USER, pw_digest)
           redirect('/')
         else 
             # passwords don't match
@@ -148,21 +165,22 @@ post('/users') do
 end
 
 get('/rooms/') do
-    session[:prev_action] = request.path_info
     id = session[:id]
     db = Database::connect(DB_PATH)
-
+  
     @rooms = db.execute("
-        SELECT r.id AS room_id, r.name AS room_name, u.username AS owner_username, COUNT(rur.user_id) AS member_count
-        FROM room AS r
-        JOIN user AS u ON u.id = r.owner_id
-        LEFT JOIN room_user_relation AS rur ON rur.room_id = r.id
-        GROUP BY r.id")
-
+      SELECT r.id AS room_id, r.name AS room_name, u.username AS owner_username, COUNT(rur.user_id) AS member_count
+      FROM room AS r
+      JOIN user AS u ON u.id = r.owner_id
+      JOIN room_user_relation AS rur ON rur.room_id = r.id
+      WHERE rur.user_id = ?
+      GROUP BY r.id", id)
+  
     p @rooms
-
+  
     @tags = db.execute("SELECT * FROM tags")
-
+  
+    session[:prev_action] = request.path_info
     slim(:"rooms/index")
 end
 
@@ -186,11 +204,11 @@ post('/rooms') do
         redirect('/error')
     end
 
-    if name.scan(/\s/).length > 0 || password.scan(/\s/).length > 0
+    if password.scan(/\s/).length > 0
         p "whitespace"
         p name
         p password
-        session[:error] = "One of the parameters had a whitespace character in it."
+        session[:error] = "The password had a whitespace character in it."
         redirect('/error')
     end
 
@@ -225,7 +243,6 @@ post('/rooms') do
 end
 
 get('/rooms/:id') do 
-    session[:prev_action] = request.path_info
     user_id = session[:id].to_i
 
     if user_id
@@ -239,7 +256,10 @@ get('/rooms/:id') do
                 FROM message AS m
                 JOIN room AS r ON r.id = m.room_id
                 ")
+            
+            p @messages
 
+            session[:prev_action] = request.path_info
             slim(:"rooms/show")
         else
             p "Not a member"
@@ -273,6 +293,8 @@ post('/message') do
 
         if room_id
             db = Database::connect(DB_PATH)
+            p room_id
+            p user_id
             is_member = db.execute("SELECT 1 FROM room_user_relation WHERE room_id = ? AND user_id = ?", room_id, user_id).first
 
             if is_member
@@ -304,6 +326,8 @@ post('/message') do
         session[:error] = "You are not logged in."
         redirect('/error')
     end
+
+    redirect('/rooms/' + room_id.to_s)
 end
 
 get('/admin/') do 
@@ -312,6 +336,7 @@ get('/admin/') do
 end
 
 post('/admin/nuke') do
+    # CHECK FOR ADMIN USER TYPE
     db = Database::connect(DB_PATH)
     db.execute("DELETE FROM room")
     db.execute("DELETE FROM room_user_relation")
@@ -347,8 +372,7 @@ post('/tags') do
     end
 end
 
-# ge varje room en kategori 
-# för att få ytterliggare en relationstabell
-
-# låt också det finnas viss användar
-# behövrighet 
+post('/signout') do 
+    session.clear
+    redirect('/')
+end

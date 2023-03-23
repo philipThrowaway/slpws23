@@ -3,5 +3,5 @@ div.message_box
         - if @messages
             - @messages.each do |message|
                 div.message
-                    h4 message['room_id']
+                    h4 = "#{message['message_owner']}: #{message['message_content']}"
     == slim :"message/new"

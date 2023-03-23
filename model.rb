@@ -9,6 +9,11 @@ module Database
     end
 end
 
+module UserType
+    USER = 0
+    ADMIN = 1
+end
+
 module Auth
     def self.init(session)
         @session = session
