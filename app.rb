@@ -72,8 +72,13 @@ post('/login') do
     if result
       pw_digest = result["pw_digest"]
       id = result["id"]
+      type = result["type"]
   
       if BCrypt::Password.new(pw_digest) == password
+        if type == UserType::ADMIN
+            p "admin has logged in"
+            session[:admin] = 1 
+        end
         session[:id] = id
         redirect('/rooms/')
       else  
@@ -86,7 +91,7 @@ post('/login') do
       session[:error] = "User doesn't exist"
       redirect('/error')
     end
-  end
+end
 
 get('/register') do
     session[:prev_action] = request.path_info
@@ -150,7 +155,7 @@ post('/users') do
         if (password == password_confirm)
           pw_digest = BCrypt::Password.create(password)
           
-          db.execute("INSERT INTO user(username, type, pw_digest) VALUES (?, ?)", username, UserType::USER, pw_digest)
+          db.execute("INSERT INTO user(username, type, pw_digest) VALUES (?, ?, ?)", username, UserType::USER, pw_digest)
           redirect('/')
         else 
             # passwords don't match
@@ -173,8 +178,7 @@ get('/rooms/') do
       FROM room AS r
       JOIN user AS u ON u.id = r.owner_id
       JOIN room_user_relation AS rur ON rur.room_id = r.id
-      WHERE rur.user_id = ?
-      GROUP BY r.id", id)
+      GROUP BY r.id")
   
     p @rooms
   
@@ -191,10 +195,49 @@ get('/rooms/new') do
     slim(:"rooms/new")
 end
 
+get('/rooms/login') do 
+    session[:prev_action] = request.path_info
+    slim(:"rooms/login")
+end
+
+post('/rooms/login') do 
+    db = Database::connect(DB_PATH)
+    user_id = session[:id]
+    room_invite = params[:invite]
+
+    if room_invite.empty?
+        session[:error] = "The invite was empty."
+        redirect('/error')
+    end
+
+    if room = db.execute("SELECT * FROM room WHERE invite = ?", room_invite).first
+        if db.execute("SELECT * FROM room_user_relation WHERE room_id=? AND user_id=?", room["id"], user_id).first
+            session[:error] = "You are already a member of that room"
+            redirect('/error')
+        else
+            db.execute("INSERT INTO room_user_relation(room_id, user_id) VALUES (?, ?)", room["id"], user_id)
+            redirect('/rooms/')
+        end  
+    else
+        session[:error] = "Room doesn't exist"
+        redirect('/error')
+    end
+end
+
+def unique_invite()
+    db = Database::connect(DB_PATH)
+    invite = (0...8).map { (65 + rand(26)).chr }.join
+    existing_room = db.execute("SELECT * FROM room WHERE invite = ?", invite).first
+    if existing_room
+        unique_invite()
+    end
+
+    return invite
+end
+
 post('/rooms') do 
     db = Database::connect(DB_PATH)
     name = params[:name]
-    password = params[:password]
     tag_ids = params[:tags]
     owner_id = session[:id]
 
@@ -204,31 +247,15 @@ post('/rooms') do
         redirect('/error')
     end
 
-    if password.scan(/\s/).length > 0
-        p "whitespace"
-        p name
-        p password
-        session[:error] = "The password had a whitespace character in it."
-        redirect('/error')
-    end
-
     if tag_ids.nil?
         p "no tags provided"
         session[:error] = "A room needs to have tags."
         redirect('/error')
     end
 
-    pw_digest = BCrypt::Password.create(password)
+    invite = unique_invite()
 
-    existing_room = db.execute("SELECT id FROM room WHERE name = ?", name).first
-    if existing_room
-        # room already exists
-        p "room exists"
-        session[:error] = "A room with the name '#{name}' already exists."
-        redirect('/error')
-    end
-
-    db.execute("INSERT INTO room(name, pw_digest, owner_id) VALUES (?, ?, ?)", name, pw_digest, owner_id)
+    db.execute("INSERT INTO room(name, invite, owner_id) VALUES (?, ?, ?)", name, invite, owner_id)
     room_id = db.last_insert_row_id
 
     tag_ids.each do |tag_id|
@@ -252,12 +279,17 @@ get('/rooms/:id') do
 
         if is_member
             @messages = db.execute("
-                SELECT m.id AS message_id, m.room_id AS message_room_id, m.content AS message_content, m.owner_id AS message_owner
+                SELECT m.id AS message_id, m.room_id AS message_room_id, m.content AS message_content, m.owner_id AS message_owner, u.username AS message_owner_username
                 FROM message AS m
-                JOIN room AS r ON r.id = m.room_id
-                ")
+                JOIN user AS u ON u.id = m.owner_id
+                WHERE m.room_id = ?
+                ", @room_id)
             
             p @messages
+
+            @invite = db.execute("
+                SELECT invite FROM room WHERE id = ?
+                ", @room_id).first[0]
 
             session[:prev_action] = request.path_info
             slim(:"rooms/show")
@@ -341,6 +373,7 @@ post('/admin/nuke') do
     db.execute("DELETE FROM room")
     db.execute("DELETE FROM room_user_relation")
     db.execute("DELETE FROM room_tags_relation")
+    db.execute("DELETE FROM message")
 
   # redirect to admin page
     redirect('/admin/')

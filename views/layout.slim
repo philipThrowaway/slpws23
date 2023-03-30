@@ -7,13 +7,13 @@ html lang="en"
         link rel="stylesheet" href="/css/style.css"/
         title 0xChat | beta
     body#wrapper 
-        - id = session[:id]
         nav#ui
             h1 0xChat
             div#links
-                a href="/rooms/" rooms
-                a href="/admin/" admin
                 - id = session[:id]
-                a href="/users/#{id}" profile
+                    a href="/rooms/" rooms
+                    - admin = session[:admin]
+                        a href="/admin/" admin
+                    a href="/users/#{id}" profile
 
         == yield

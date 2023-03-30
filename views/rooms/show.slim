@@ -1,7 +1,9 @@
+-if @invite
+    p = "Invite: #{@invite}"
 div.message_box
     div.display
         - if @messages
             - @messages.each do |message|
                 div.message
-                    h4 = "#{message['message_owner']}: #{message['message_content']}"
+                    h4 = "#{message['message_owner_username']}: #{message['message_content']}"
     == slim :"message/new"
