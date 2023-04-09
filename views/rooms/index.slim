@@ -1,19 +1,25 @@
-div#rooms
-    div#sidebar
+div.container
+    div.d-flex.gap-2.mt-2.mb-2
         form action="/rooms/new" method="get"
-            input type="submit" value="New"
+            input.btn.btn-primary type="submit" value="New"
         form action="/rooms/login" method="get"
-            input type="submit" value="Join"
-    - if @rooms
-        - if @tags
-            - @tags.each do |tag|
-                / implement filter system
-        div#room_display
-            - @rooms.each do |room|
-                a.room_card href="/rooms/#{room['room_id']}"
-                    h2 = room['room_name']
-                    p = "Owner: #{room['owner_username']}"
+            input.btn.btn-primary type="submit" value="Join"
+    div.d-flex.flex-wrap.gap-3
+        - @rooms.each do |room|
+            div.card.flex-fill
+                div.card-header = room['room_name']
+                div.card-body 
                     - if room['member_count'] > 1
-                        p = "#{room['member_count']} Members"
+                        - member_string = "#{room['member_count']} Members"
                     - else
-                        p = "#{room['member_count']} Member"
+                        - member_string = "#{room['member_count']} Member"
+                    h6.card-subtitle.mb-3.text-body-secondary = "#{room['owner_username']} | #{member_string}"
+                    div.btn-group
+                        a.btn.btn-primary href="/rooms/#{room['room_id']}" = "Visit"
+                        - p "LOOOOL"
+                        - p room['owner_id']
+                        - p session[:id]
+                        - p "LOOOOL"
+                        - if room['owner_id'] == session[:id]
+                            a.btn.btn-primary href="/rooms/#{room['room_id']}/edit" = "Edit"
+                        a.btn.btn-primary href="#" = "Leave"

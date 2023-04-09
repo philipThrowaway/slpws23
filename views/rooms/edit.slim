@@ -1,0 +1,10 @@
+div.container-fluid.mt-3
+    div.card
+        div.card-header Edit room info
+        div.card-body
+            h5.card-title Make some changes!
+            form action="/rooms/#{@room_id}/update" method="post"
+                div.mb-3
+                    label.form-label = "Name"
+                    input.form-control type="text" name="name" placeholder="The name of the room" required=true maxlength=16 
+                button.btn.btn-primary type="submit" = "Update"

@@ -1,8 +1,16 @@
-form.modul.fullscreen action="/rooms" method="post"
-    h2 Create a new chatroom
-    input type="text" name="name" placeholder="The name of the room" required=true maxlength=16
-    - if @tags
-        select name="tags[]" multiple=true
-            - @tags.each do |tag|
-                option value="#{tag['id']}" #{tag['label']}
-    input type="submit" value="Create"
+div.container-fluid.mt-3
+    div.card
+        div.card-header Create a new chatroom
+        div.card-body
+            h5.card-title Make a room for you and your friends!
+            form action="/rooms" method="post"
+                div.mb-3
+                    label.form-label = "Room name"
+                    input.form-control type="text" name="name" placeholder="The name of the room" required=true maxlength=16 
+                div.input-group.mb-3
+                    - if @tags
+                        label.input-group-text for="inputTags" = "Tags"
+                        select.form-select#inputTags name="tags[]" multiple=true
+                            - @tags.each do |tag|
+                                option value="#{tag['id']}" #{tag['label']}
+                button.btn.btn-primary type="submit" = "Creates"

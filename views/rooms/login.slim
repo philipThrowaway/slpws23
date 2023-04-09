@@ -1,4 +1,10 @@
-form.modul.fullscreen action="/rooms/login" method="post"
-    h2 Join a chatroom
-    input type="text" name="invite" placeholder="The invite for the room" required=true
-    input type="submit" value="Join"
+div.container-fluid.mt-3
+    div.card
+        div.card-header Join a chatroom
+        div.card-body
+            h5.card-title Start chatting!
+            form action="/rooms/login" method="post"
+                div.mb-3
+                    label.form-label = "Invite code" 
+                    input.form-control type="text" name="invite" placeholder="The invite for the room" required=true
+                button.btn.btn-primary type="submit" = "Join"

@@ -8,5 +8,5 @@ div.modul.extra_space.fullscreen
         form.modul_min action="/users/#{@result['id']}/delete" method="post"
             input type="submit" value="Delete"
     - if @same_user
-        form.modul_min action="/signout" method="post"
+        form.modul_min action="/signout" method="get"
             input type="submit" value="Sign out"

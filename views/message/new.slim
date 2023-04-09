@@ -1,4 +1,4 @@
-form.modul action="/message" method="post"
-    input type="text" name="content" placeholder="Your message..." required=true
+form.input-group action="/message" method="post"
+    i.input-group-text.bi.bi-chat-left-fill#addon
     input type="hidden" name="room_id" value="#{@room_id}"
-    input type="submit" value=">"
+    input.form-control type="text" name="content" placeholder="Your message..." required=true aria-describedby="addon"

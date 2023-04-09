@@ -1,7 +1,14 @@
-form.modul.fullscreen action="login" method="post"
-    h2 Login
-    input type="text" name="username" placeholder="Username" required=true
-    input type="password" name="password" placeholder="Password" required=true
-    input type="submit" value="Login"
-
-    a href="/register" Don't have an account? Register
+div.container-fluid.mt-3
+    div.card
+        div.card-header Login
+        div.card-body
+            h5.card-title Welcome back!
+            form action="login" method="post"
+                div.mb-3
+                    label.form-label = "Username" 
+                    input.form-control type="text" name="username" placeholder="Enter your username..." required=true
+                div.mb-3
+                    label.form-label = "Password" 
+                    input.form-control type="password" name="password" placeholder="Enter your password..." required=true
+                button.btn.btn-primary.mb-3 type="submit" = "Login"
+            a.card-text href="/register" Don't have an account? Register

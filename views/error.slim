@@ -1,3 +1,8 @@
-form.modul.fullscreen action='/retry' method="post"
-    h2 = @error_message
-    input type="submit" value="Try again"
+div.container-fluid.mt-3
+    div.card
+        div.card-header Error
+        div.card-body
+            h5.card-title = "Whoops!"
+            h6.card-subtitle.mb-2.text-body-secondary = @error_message
+            form action="/retry" method="post"
+                button.btn.btn-primary type="submit" = "Retry"

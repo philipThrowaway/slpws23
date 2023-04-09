@@ -98,6 +98,54 @@ get('/register') do
     slim(:"users/new")
 end
 
+get('/signout') do 
+    session.clear
+    redirect('/')
+end
+
+get('/users/:id/edit') do 
+    db = Database::connect(DB_PATH)
+    active_user_id = session[:id]
+    @user_id = params[:id].to_i
+
+    if @user_id == active_user_id
+        slim(:"users/edit")
+    else
+        session[:error] = "You do not have permission"
+        redirect('/error')
+    end
+end
+
+post('/users/:id/update') do 
+    db = Database::connect(DB_PATH)
+    active_user_id = session[:id]
+    user_id = params[:id].to_i
+
+    if user_id == active_user_id
+        username = params[:username]
+        db.execute("UPDATE user SET username = ? WHERE id = ?", [username, user_id])
+        redirect('/')
+    else
+        session[:error] = "You do not have permission"
+        redirect('/error')
+    end
+end
+
+post('/users/:id/delete') do 
+    db = Database::connect(DB_PATH)
+    active_user_id = session[:id]
+    user_id = params[:id].to_i
+
+    if user_id == active_user_id
+        username = params[:username]
+        db.execute("UPDATE user SET username = ? WHERE id = ?", [username, user_id])
+        redirect('/')
+    else
+        session[:error] = "You do not have permission"
+        redirect('/error')
+    end
+end
+
 get('/users/:id') do 
     db = Database::connect(DB_PATH)
     active_user_id = session[:id]
@@ -150,8 +198,8 @@ post('/users') do
         redirect('/error')
     end
 
-    result = db.execute("SELECT id FROM user WHERE username=?", username)
-    if result.empty?
+    result = db.execute("SELECT id FROM user WHERE username=?", username).first
+    if result.nil?
         if (password == password_confirm)
           pw_digest = BCrypt::Password.create(password)
           
@@ -163,8 +211,7 @@ post('/users') do
             redirect('/error')
         end
     else  
-        # username doesn't exist
-        session[:error] = "User doesn't exist"
+        session[:error] = "User exists"
         redirect('/error')
     end
 end
@@ -174,11 +221,11 @@ get('/rooms/') do
     db = Database::connect(DB_PATH)
   
     @rooms = db.execute("
-      SELECT r.id AS room_id, r.name AS room_name, u.username AS owner_username, COUNT(rur.user_id) AS member_count
-      FROM room AS r
-      JOIN user AS u ON u.id = r.owner_id
-      JOIN room_user_relation AS rur ON rur.room_id = r.id
-      GROUP BY r.id")
+        SELECT r.id AS room_id, r.name AS room_name, u.username AS owner_username, COUNT(rur.user_id) AS member_count, r.owner_id
+        FROM room AS r
+        JOIN user AS u ON u.id = r.owner_id
+        JOIN room_user_relation AS rur ON rur.room_id = r.id
+        GROUP BY r.id")
   
     p @rooms
   
@@ -186,6 +233,48 @@ get('/rooms/') do
   
     session[:prev_action] = request.path_info
     slim(:"rooms/index")
+end
+
+get('/rooms/:id/edit') do 
+    db = Database::connect(DB_PATH)
+    active_user_id = session[:id]
+    @room_id = params[:id].to_i
+
+    is_member = db.execute("SELECT 1 FROM room_user_relation WHERE room_id = ? AND user_id = ?", @room_id, active_user_id).first
+    is_owner = db.execute("SELECT 1 FROM room WHERE id = ? AND owner_id = ?", @room_id, active_user_id).first
+
+    if is_member && is_owner
+        slim(:"rooms/edit")
+    else
+        session[:error] = "You do not have permission"
+        redirect('/error')
+    end
+end
+
+post('/rooms/:id/update') do
+    db = Database::connect(DB_PATH)
+    active_user_id = session[:id]
+    room_id = params[:id].to_i
+  
+    is_owner = db.execute("SELECT 1 FROM room WHERE owner_id = ? AND id = ?", active_user_id, room_id).first
+  
+    if is_owner
+      new_name = params[:name]
+  
+      if new_name.empty?
+        session[:error] = "Room name cannot be empty"
+        redirect('/error')
+      elsif new_name.length > 16
+        session[:error] = "Room name cannot exceed 16 characters"
+        redirect('/error')
+      else
+        db.execute("UPDATE room SET name = ? WHERE id = ?", new_name, room_id)
+        redirect("/rooms/#{room_id}")
+      end
+    else
+      session[:error] = "You do not have permission to update this room"
+      redirect('/error')
+    end
 end
 
 get('/rooms/new') do
@@ -363,20 +452,38 @@ post('/message') do
 end
 
 get('/admin/') do 
-    session[:prev_action] = request.path_info
-    slim(:"admin/index")
+    db = Database::connect(DB_PATH)
+    active_user_id = session[:id]
+
+    active_user_result = db.execute("SELECT * FROM user WHERE id=?", active_user_id).first
+
+    if active_user_result['type'] == UserType::ADMIN
+        session[:prev_action] = request.path_info
+        slim(:"admin/index")
+    end
+
+    session[:error] = "You do not have permission"
+    redirect('/error')
 end
 
 post('/admin/nuke') do
     # CHECK FOR ADMIN USER TYPE
     db = Database::connect(DB_PATH)
-    db.execute("DELETE FROM room")
-    db.execute("DELETE FROM room_user_relation")
-    db.execute("DELETE FROM room_tags_relation")
-    db.execute("DELETE FROM message")
 
-  # redirect to admin page
-    redirect('/admin/')
+    active_user_id = session[:id]
+    active_user_result = db.execute("SELECT * FROM user WHERE id=?", active_user_id).first
+
+    if active_user_result['type'] == UserType::ADMIN
+        db.execute("DELETE FROM room")
+        db.execute("DELETE FROM room_user_relation")
+        db.execute("DELETE FROM room_tags_relation")
+        db.execute("DELETE FROM message")
+    
+        redirect('/admin/')
+    end
+
+    session[:error] = "You do not have permission"
+    redirect('/error')
 end
 
 get('/tags/new') do

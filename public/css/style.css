@@ -19,9 +19,9 @@ html, body {
     height: 100%;
     width: 100%;
 
-    background-color: #000;
+    /* background-color: #000; */
 }
-
+/* 
 h1, h2, h3, h4, h5, p {
     font-family: 'Inter var', sans-serif;
     color: white;
@@ -212,4 +212,4 @@ a.room_card {
     gap: 1em;
     background-color: rgba(255, 255, 255, 0.1);
     border-radius: 0.5em;
-}
+} */

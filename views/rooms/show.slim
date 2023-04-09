@@ -1,9 +1,16 @@
--if @invite
-    p = "Invite: #{@invite}"
-div.message_box
-    div.display
-        - if @messages
-            - @messages.each do |message|
-                div.message
-                    h4 = "#{message['message_owner_username']}: #{message['message_content']}"
-    == slim :"message/new"
+div.container.d-flex.flex-wrap.gap-3.p-3
+    div.card.flex-fill
+        div.card-header = "Chatroom | code: #{@invite}"
+        div.card-body.d-flex.flex-column.gap-4 style="height: 60vh; overflow: auto; display: flex; flex-direction: column-reverse;"
+            - if @messages
+                div.d-flex.flex-column.gap-4
+                    - @messages.each do |message|
+                        div.toast role="alert" aria-live="assertive" aria-atomic="true" style="display: block; width: 100%;"
+                            div.toast-header
+                                strong = message['message_owner_username']
+                            div.toast-body = "#{message['message_content']}"
+        div.card-body
+            == slim :"message/new"
+    div.card.flex-fill
+        div.card-header = "Members"
+        div.card-body
