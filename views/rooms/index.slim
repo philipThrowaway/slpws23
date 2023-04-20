@@ -4,6 +4,14 @@ div.container
             input.btn.btn-primary type="submit" value="New"
         form action="/rooms/login" method="get"
             input.btn.btn-primary type="submit" value="Join"
+    form.mb-3 action="/rooms/" method="get"
+        div.input-group.mb-3
+            - if @tags
+                label.input-group-text for="inputTags" = "Tags"
+                select.form-select#inputTags name="tags[]" multiple=true
+                    - @tags.each do |tag|
+                        option value="#{tag['id']}" #{tag['label']}
+        button.btn.btn-primary type="submit" Filter
     div.d-flex.flex-wrap.gap-3
         - @rooms.each do |room|
             div.card.flex-fill
@@ -13,13 +21,14 @@ div.container
                         - member_string = "#{room['member_count']} Members"
                     - else
                         - member_string = "#{room['member_count']} Member"
-                    h6.card-subtitle.mb-3.text-body-secondary = "#{room['owner_username']} | #{member_string}"
+                    div.d-flex.align-items-center.gap-1
+                        i.bi.bi-person-circle
+                        p.mb-0 = room['owner_username']
+                    div.d-flex.align-items-center.gap-1.mb-3
+                        i.bi.bi-people-fill
+                        p.mb-0 = member_string
                     div.btn-group
                         a.btn.btn-primary href="/rooms/#{room['room_id']}" = "Visit"
-                        - p "LOOOOL"
-                        - p room['owner_id']
-                        - p session[:id]
-                        - p "LOOOOL"
                         - if room['owner_id'] == session[:id]
                             a.btn.btn-primary href="/rooms/#{room['room_id']}/edit" = "Edit"
                         a.btn.btn-primary href="#" = "Leave"

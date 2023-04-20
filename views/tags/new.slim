@@ -1,4 +1,10 @@
-form.modul.fullscreen action="/tags" method="post"
-    h2 Create a new tag
-    input type="text" name="label" placeholder="The label of the tag" required=true
-    input type="submit" value="Create"
+div.container-fluid.mt-3
+    div.card
+        div.card-header Create a new tag
+        div.card-body
+            h5.card-title For more categorization!
+            form action="/tags" method="post"
+                div.mb-3
+                    label.form-label = "Label"
+                    input.form-control type="text" name="label" placeholder="The label of the tag" required=true maxlength=16 
+                button.btn.btn-primary type="submit" = "Update"

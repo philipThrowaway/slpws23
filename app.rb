@@ -220,20 +220,39 @@ get('/rooms/') do
     id = session[:id]
     db = Database::connect(DB_PATH)
   
-    @rooms = db.execute("
-        SELECT r.id AS room_id, r.name AS room_name, u.username AS owner_username, COUNT(rur.user_id) AS member_count, r.owner_id
+    selected_tags = params[:tags]
+  
+    if selected_tags && selected_tags.any?
+      # filter by selected tags
+      tag_ids = selected_tags.map(&:to_i).join(',')
+      @rooms = db.execute("
+        SELECT r.id AS room_id, r.name AS room_name, u.username AS owner_username,
+          (SELECT COUNT(DISTINCT user_id) FROM room_user_relation WHERE room_id = r.id) AS member_count,
+          r.owner_id
         FROM room AS r
         JOIN user AS u ON u.id = r.owner_id
         JOIN room_user_relation AS rur ON rur.room_id = r.id
-        GROUP BY r.id")
-  
-    p @rooms
+        JOIN room_tags_relation AS tr ON tr.room_id = r.id
+        WHERE rur.user_id = ? AND tr.tag_id IN (#{tag_ids})
+        GROUP BY r.id", id)
+    else
+      # no tags selected, show all rooms
+      @rooms = db.execute("
+        SELECT r.id AS room_id, r.name AS room_name, u.username AS owner_username,
+          (SELECT COUNT(DISTINCT user_id) FROM room_user_relation WHERE room_id = r.id) AS member_count,
+          r.owner_id
+        FROM room AS r
+        JOIN user AS u ON u.id = r.owner_id
+        JOIN room_user_relation AS rur ON rur.room_id = r.id
+        WHERE rur.user_id = ?
+        GROUP BY r.id", id)
+    end
   
     @tags = db.execute("SELECT * FROM tags")
   
     session[:prev_action] = request.path_info
     slim(:"rooms/index")
-end
+end  
 
 get('/rooms/:id/edit') do 
     db = Database::connect(DB_PATH)
@@ -359,14 +378,16 @@ post('/rooms') do
 end
 
 get('/rooms/:id') do 
-    user_id = session[:id].to_i
+    @user_id = session[:id].to_i
 
-    if user_id
+    if @user_id
         @room_id = params[:id].to_i
         db = Database::connect(DB_PATH)
-        is_member = db.execute("SELECT 1 FROM room_user_relation WHERE room_id = ? AND user_id = ?", @room_id, user_id).first
+        is_member = db.execute("SELECT 1 FROM room_user_relation WHERE room_id = ? AND user_id = ?", @room_id, @user_id).first
 
         if is_member
+            @room = db.execute("SELECT * FROM room WHERE id = ?", @room_id)
+
             @messages = db.execute("
                 SELECT m.id AS message_id, m.room_id AS message_room_id, m.content AS message_content, m.owner_id AS message_owner, u.username AS message_owner_username
                 FROM message AS m
@@ -451,19 +472,38 @@ post('/message') do
     redirect('/rooms/' + room_id.to_s)
 end
 
+post('/message/:id/delete') do 
+    message_id = params[:id].to_i
+    db = Database::connect(DB_PATH)
+
+    message = db.execute("SELECT * FROM message WHERE id = ?", message_id).first
+    room = db.execute("SELECT * FROM room WHERE id = ?", message['room_id']).first
+
+    if session[:id] == message['user_id'] || session[:id] == room['owner_id']
+        db.execute("DELETE FROM message WHERE id = ?", message_id)
+        redirect back
+    else
+        session[:error] = "You do not have permission"
+        redirect('/error')
+    end
+end
+
 get('/admin/') do 
     db = Database::connect(DB_PATH)
     active_user_id = session[:id]
 
     active_user_result = db.execute("SELECT * FROM user WHERE id=?", active_user_id).first
 
+    puts "current user type: #{active_user_result['type']}\npermitted user type: #{UserType::ADMIN}"
+
     if active_user_result['type'] == UserType::ADMIN
+        p "granted"
         session[:prev_action] = request.path_info
         slim(:"admin/index")
+    else
+        session[:error] = "You do not have permission"
+        redirect('/error')
     end
-
-    session[:error] = "You do not have permission"
-    redirect('/error')
 end
 
 post('/admin/nuke') do
