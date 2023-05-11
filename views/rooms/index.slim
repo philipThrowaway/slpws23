@@ -2,7 +2,7 @@ div.container
     div.d-flex.gap-2.mt-2.mb-2
         form action="/rooms/new" method="get"
             input.btn.btn-primary type="submit" value="New"
-        form action="/rooms/login" method="get"
+        form action="/rooms/join" method="get"
             input.btn.btn-primary type="submit" value="Join"
     form.mb-3 action="/rooms/" method="get"
         div.input-group.mb-3
@@ -31,4 +31,3 @@ div.container
                         a.btn.btn-primary href="/rooms/#{room['room_id']}" = "Visit"
                         - if room['owner_id'] == session[:user][:id]
                             a.btn.btn-primary href="/rooms/#{room['room_id']}/edit" = "Edit"
-                        a.btn.btn-primary href="#" = "Leave"

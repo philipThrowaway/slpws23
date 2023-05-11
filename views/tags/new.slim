@@ -6,5 +6,5 @@ div.container-fluid.mt-3
             form action="/tags" method="post"
                 div.mb-3
                     label.form-label = "Label"
-                    input.form-control type="text" name="label" placeholder="The label of the tag" required=true maxlength=16 
+                    input.form-control type="text" name="label" placeholder="The label of the tag" required=true maxlength=Mer::Constants::MAX_TAGNAME_LENGTH 
                 button.btn.btn-primary type="submit" = "Update"

@@ -5,63 +5,87 @@ require 'bcrypt'
 
 require_relative './model.rb'
 
-# NEEDS TO BE STORED IN SESSION
-# $error_obj = Mer::ErrorHandler.new
-
-# db = Mer::Database.new(DB_PATH)
-# user = Mer::User.new(db.get)
-# user.create_root
-
-# before do 
-#     if session[:id].nil? && !AUTH.include?(request.path_info) && request.path_info != '/error'
-#       session[:error] = 'You need to be logged in'
-#       redirect('/error')
-#     elsif !session[:id].nil? && AUTH.include?(request.path_info)
-#       p 'redirecting to previous action'
-#       redirect(session[:action])
-#     end
-# end
-
 enable :sessions
 
-DB_PATH ||= 'db/database.db'
-
+# List of routes allowed when the user is not signed in.
 NOT_SIGNED_IN_ALLOWED ||= ['/login', '/register']
-# FIX PERMS
-NOT_SIGNED_IN_DISALLOWED ||= ['/users', '/rooms/']
-ADMIN_ONLY ||= ['/admin']
+# List of routes disallowed when the user is not signed in.
+NOT_SIGNED_IN_DISALLOWED ||= ['/users', '/admin', '/rooms', '/message', '/admin', '/tags']
+# List of routes accessible only to admins.
+ADMIN_ONLY ||= ['/admin', '/tags']
 
-# create admin account on initialization
-# -> todo!!!
-# p.s. do it directly from Database class...
+temp_connection = Mer::Database.new
+temp_connection.create_root
 
+# Registers an error message and redirects to the error page.
+#
+# @param [String] error_message The error message to be registered.
 def handle_error(error_message)
     Mer::ErrorHandler.register(session, error_message)
     request.path_info = '/'
     redirect('/error')
 end
 
+# Runs before every request and checks if the user has access to the requested page.
 before do
     path_info = request.path_info
     puts path_info
 
-    if NOT_SIGNED_IN_DISALLOWED.include?(path_info) && Mer::Authorization.signed_in?(session)
-        if not Mer::Authorization.valid?(session)
-            handle_error(Mer::ErrorMessage::CREDENTIALS_INVALID)
+    if not request.path_info == '/error'
+        if Mer::Authorization.signed_in?(session)
+            current_time = Time.now.to_i
+            refill_rate = 5 # maximum requests per second
+            capacity = 5 # maximum tokens in the bucket
+
+            session[:last_request_time] ||= current_time # initialize if nil
+
+            # calculate the number of tokens to refill based on the elapsed time
+            tokens_to_add = ((current_time - session[:last_request_time]) * refill_rate).to_i
+            session[:last_request_time] = current_time
+
+            # add tokens to the bucket, up to the maximum capacity
+            session[:token_bucket] = [(session[:token_bucket] || 0) + tokens_to_add, capacity].min
+
+            if session[:token_bucket].to_i > 0
+                # consume a token from the bucket
+                session[:token_bucket] -= 1
+            else
+                # bucket is empty, redirect to error page or handle the error
+                Mer::ErrorHandler.register(session, Mer::ErrorMessage::COOLDOWN)
+                redirect('/error')
+            end
         end
     end
 
-    if request.get?
-        if NOT_SIGNED_IN_ALLOWED.include?(path_info) && Mer::Authorization.signed_in?(session)
-            handle_error(Mer::ErrorMessage::ALREADY_SIGNED)
-        elsif NOT_SIGNED_IN_DISALLOWED.include?(path_info) && !Mer::Authorization.signed_in?(session)
-            handle_error(Mer::ErrorMessage::NEED_SIGNED)
-        elsif ADMIN_ONLY.include?(path_info) && !Mer::Authorization.admin?(session)
-            handle_error(Mer::ErrorMessage::UNAUTHORIZED)
+    if not request.post? && request.path_info == '/users' # hacky way of preventing the "blockage" of sign-up requests
+        if Mer::Authorization.signed_in?(session)
+            if NOT_SIGNED_IN_ALLOWED.any? { |word| path_info.include?(word) }
+                # prevent signed-in user to be able to 
+                # sign-in or register, they'll have to sign-out
+                redirect('/rooms/')
+            end
+
+            if ADMIN_ONLY.any? { |word| path_info.include?(word) } && !Mer::Authorization.admin?(session)
+                # prevent regular users from accessing
+                # routes labled as "admin only"
+                handle_error(Mer::ErrorMessage::UNAUTHORIZED)
+            end
+        else 
+            if NOT_SIGNED_IN_DISALLOWED.any? { |word| path_info.include?(word) }
+                # this is to ensure for routes requiring user information
+                # only be access by sign-in users 
+                handle_error(Mer::ErrorMessage::NEED_SIGNED)
+            end
+
+            if ADMIN_ONLY.any? { |word| path_info.include?(word) && !Mer::Authorization.admin?(session) }
+                # same thing as before...
+                handle_error(Mer::ErrorMessage::UNAUTHORIZED)
+            end
         end
     end
 end
 
+# Runs after every request and redirects to the error page if a 404 request is 
 after do
     if request.get? && !request.path_info.include?('error')
         if response.status == 404
@@ -76,12 +100,16 @@ after do
     end
 end
 
+# Route to handle the '/error' page.
+#
 get('/error') do 
     session[:action] = '/' if session[:action].nil?
     p "previous action was: #{session[:action]}"
     slim(:error)
 end
 
+# Route to handle the root page.
+#
 get('/') do
     redirect('/login')
 end
@@ -90,14 +118,25 @@ end
 # PRE-LOGIN #
 ############# 
 
+# Route to handle the '/login' page.
+#
 get('/login') do
     slim(:login)
 end
 
+# Route to handle the '/register' page.
+#
 get('/register') do
     slim(:"users/new")
 end
 
+# Route to handle the user registration form submission.
+#
+# @param [String] :username The username.
+# @param [String] :password The password.
+# @param [String] :password_confirm The password confirmation.
+# @see Mer::ErrorHandler#register
+# @see Mer::User#register
 post('/users') do    
     username = params[:username]
     password = params[:password]
@@ -111,11 +150,18 @@ post('/users') do
     user_obj = Mer::User.new(session)
     begin
         user_obj.register(username, password, Mer::UserType::USER)
+        redirect('/rooms/')
     rescue
         redirect('/error')
     end
 end
 
+# Route to handle the user login form submission.
+#
+# @param [String] :username The username.
+# @param [String] :password The password.
+# @see Mer::ErrorHandler#register
+# @see Mer::User#login
 post('/login') do
     username = params[:username]
     password = params[:password]
@@ -135,6 +181,9 @@ end
 # -> user    #
 ##############
 
+# Route to handle the user sign out.
+#
+# @return [Redirect] Redirects to the root page.
 get('/signout') do 
     session.clear
     redirect('/')
@@ -146,81 +195,78 @@ end
 #    -> :id  #
 ##############
 
+# Route to handle viewing user profile by ID.
+#
+# @param [Integer] :id The user ID.
+# @see Mer::ErrorHandler#register
+# @see Mer::User#exists?
+# @see Mer::Authorization#admin?
 get('/users/:id') do 
-    db = Database::connect(DB_PATH)
-    active_user_id = session[:id]
+    db = Mer::Database.new
     user_id = params[:id].to_i
 
-    @result = db.execute("SELECT * FROM user WHERE id=?", user_id).first
+    requested_user_obj = Mer::User.new(session)
+    requested_user_obj.load_existing(user_id)
 
-    if @result.nil?
-        session[:error] = "User doesn't exist"
+    if !requested_user_obj.exists?
+        Mer::ErrorHandler.register(session, "User doesn't exist.")
         redirect('/error')
     end
 
-    @active_user_result = db.execute("SELECT * FROM user WHERE id=?", active_user_id).first
+    user_obj = Mer::User.new(session)
+    user_obj.load_existing(session[:user][:id])
 
-    @same_user = false
-    @admin = false
+    @same_user = requested_user_obj.get_id == user_obj.get_id
+    @admin = Mer::Authorization.admin?(session)
 
-    if user_id == active_user_id
-        p "same user"
-        @same_user = true
-    end
+    @username = requested_user_obj.get_username
+    @id = requested_user_obj.get_id
 
-    p @result
-
-    if @active_user_result['type'] == UserType::ADMIN
-        p "is admin"
-        @admin = true
-    end
-
-    p @same_user
-    p @admin
-
-    session[:prev_action] = request.path_info
     slim(:"users/index")
 end
 
+# Edit user profile page
+#
+# @param id [Integer] the ID of the user to edit
+# @see Mer::User#load_existing
 get('/users/:id/edit') do 
-    db = Database::connect(DB_PATH)
-    active_user_id = session[:id]
-    @user_id = params[:id].to_i
+    db = Mer::Database.new
 
-    if @user_id == active_user_id
+    @user_id = params[:id].to_i
+    requested_user_obj = Mer::User.new(session)
+    requested_user_obj.load_existing(@user_id)
+
+    user_obj = Mer::User.new(session)
+    user_obj.load_existing(session[:user][:id])
+
+    if @user_id == user_obj.get_id
         slim(:"users/edit")
     else
-        session[:error] = "You do not have permission"
+        Mer::ErrorHandler.register(session, Mer::ErrorMessage::UNAUTHORIZED)
         redirect('/error')
     end
 end
 
+# Update user profile
+#
+# @param id [Integer] the ID of the user to update
+# @see Mer::User#load_existing
+# @see Mer::User#update_username
 post('/users/:id/update') do 
-    db = Database::connect(DB_PATH)
-    active_user_id = session[:id]
-    user_id = params[:id].to_i
+    db = Mer::Database.new
 
-    if user_id == active_user_id
-        username = params[:username]
-        db.execute("UPDATE user SET username = ? WHERE id = ?", [username, user_id])
+    @user_id = params[:id].to_i
+    requested_user_obj = Mer::User.new(session)
+    requested_user_obj.load_existing(@user_id)
+
+    user_obj = Mer::User.new(session)
+    user_obj.load_existing(session[:user][:id])
+
+    if @user_id == user_obj.get_id
+        requested_user_obj.update_username(params[:username])
         redirect('/')
     else
-        session[:error] = "You do not have permission"
-        redirect('/error')
-    end
-end
-
-post('/users/:id/delete') do 
-    db = Database::connect(DB_PATH)
-    active_user_id = session[:id]
-    user_id = params[:id].to_i
-
-    if user_id == active_user_id
-        username = params[:username]
-        db.execute("UPDATE user SET username = ? WHERE id = ?", [username, user_id])
-        redirect('/')
-    else
-        session[:error] = "You do not have permission"
+        Mer::ErrorHandler.register(session, Mer::ErrorMessage::UNAUTHORIZED)
         redirect('/error')
     end
 end
@@ -230,6 +276,8 @@ end
 # -> rooms   #
 ##############a
 
+# Display the list of rooms
+#
 get('/rooms/') do
     id = session[:user][:id]
 
@@ -266,16 +314,25 @@ get('/rooms/') do
     slim(:"rooms/index")
 end  
 
+# Display the form for creating a new room
+#
 get('/rooms/new') do
     db = Mer::Database.new
     @tags = db.select("tags", "*")
     slim(:"rooms/new")
 end
 
-get('/rooms/login') do 
+# Display the login form for joining a room
+#
+get('/rooms/join') do 
     slim(:"rooms/login")
 end
 
+# Create a new room
+#
+# @param name [String] the name of the room
+# @param tags [Array<String>] the tags associated with the room
+# @see Mer::Room#register
 post('/rooms') do 
     db = Mer::Database.new
     name = params[:name]
@@ -289,42 +346,13 @@ post('/rooms') do
         puts e
         redirect('/error')
     end
-
-
-    # db = Database::connect(DB_PATH)
-    # name = params[:name]
-    # tag_ids = params[:tags]
-    # owner_id = session[:id]
-
-    # if name.length > 16
-    #     p "name length"
-    #     session[:error] = "The room name must be at most 16 characters long."
-    #     redirect('/error')
-    # end
-
-    # if tag_ids.nil?
-    #     p "no tags provided"
-    #     session[:error] = "A room needs to have tags."
-    #     redirect('/error')
-    # end
-
-    # invite = unique_invite()
-
-    # db.execute("INSERT INTO room(name, invite, owner_id) VALUES (?, ?, ?)", name, invite, owner_id)
-    # room_id = db.last_insert_row_id
-
-    # tag_ids.each do |tag_id|
-    #     tag = tag_id.to_i
-    #     db.execute("INSERT INTO room_tags_relation(room_id, tag_id) VALUES (?, ?)", room_id, tag)
-    # end    
-
-    # # maybe add a check?
-    # db.execute("INSERT INTO room_user_relation(room_id, user_id) VALUES (?, ?)", room_id, owner_id)
-    
-    # redirect('/rooms/')
 end
 
-post('/rooms/login') do 
+# Join a room with an invite code
+#
+# @param invite [String] the invite code for joining the room
+# @see Mer::Room#login
+post('/rooms/join') do 
     invite = params[:invite]
 
     room_obj = Mer::Room.new(session)
@@ -332,31 +360,10 @@ post('/rooms/login') do
         room_obj.login(invite)
         redirect('/rooms/')
     rescue => e
+        puts "UNABLE TO JOIN"
         puts e.message
         redirect('/error')
     end
-
-    # db = Database::connect(DB_PATH)
-    # user_id = session[:id]
-    # room_invite = params[:invite]
-
-    # if room_invite.empty?
-    #     session[:error] = "The invite was empty."
-    #     redirect('/error')
-    # end
-
-    # if room = db.execute("SELECT * FROM room WHERE invite = ?", room_invite).first
-    #     if db.execute("SELECT * FROM room_user_relation WHERE room_id=? AND user_id=?", room["id"], user_id).first
-    #         session[:error] = "You are already a member of that room"
-    #         redirect('/error')
-    #     else
-    #         db.execute("INSERT INTO room_user_relation(room_id, user_id) VALUES (?, ?)", room["id"], user_id)
-    #         redirect('/rooms/')
-    #     end  
-    # else
-    #     session[:error] = "Room doesn't exist"
-    #     redirect('/error')
-    # end
 end
 
 ##############
@@ -365,94 +372,77 @@ end
 #    -> :id  #
 ##############
 
+# View a room
+#
+# @param id [Integer] the ID of the room to display
+# @see Mer::User#member_of_room?
+# @see Mer::Room#load_existing
 get('/rooms/:id') do 
-    @user_id = session[:id].to_i
-
-    if @user_id
-        @room_id = params[:id].to_i
-        db = Database::connect(DB_PATH)
-        is_member = db.execute("SELECT 1 FROM room_user_relation WHERE room_id = ? AND user_id = ?", @room_id, @user_id).first
-
-        if is_member
-            @room = db.execute("SELECT * FROM room WHERE id = ?", @room_id)
-
-            @messages = db.execute("
-                SELECT m.id AS message_id, m.room_id AS message_room_id, m.content AS message_content, m.owner_id AS message_owner, u.username AS message_owner_username
-                FROM message AS m
-                JOIN user AS u ON u.id = m.owner_id
-                WHERE m.room_id = ?
-                ", @room_id)
-            
-            p @messages
-
-            @invite = db.execute("
-                SELECT invite FROM room WHERE id = ?
-                ", @room_id).first[0]
-
-            session[:prev_action] = request.path_info
-            slim(:"rooms/show")
-        else
-            p "Not a member"
-            session[:error] = "You are not a member of this room."
-            redirect('/error')
-        end
+    @room_id = params[:id].to_i
+    user_obj = Mer::User.new(session)
+    user_obj.load_existing(session[:user][:id])
+    
+    if user_obj.member_of_room?(@room_id)
+        room_obj = Mer::Room.new(session)
+        room_obj.load_existing(@room_id)
+        @messages = room_obj.get_messages
+        @invite = room_obj.get_invite
+        slim(:"rooms/show")
     else
-        session[:error] = "You are not logged in."
+        Mer::ErrorHandler.register(session, 'Not a member.')
         redirect('/error')
     end
 end
 
-# get('/rooms/:id/edit') do 
-#     session[:prev_action] = request.path_info
-#     # check permissions
-# end
-
+# Edit a room
+#
+# @param id [Integer] the ID of the room to edit
+# @see Mer::User#member_of_room?
+# @see Mer::User#owner_of_room?
 get('/rooms/:id/edit') do 
-    db = Database::connect(DB_PATH)
-    active_user_id = session[:id]
+    db = Mer::Database.new
+    user_obj = Mer::User.new(session)
+    user_obj.load_existing(session[:user][:id])
     @room_id = params[:id].to_i
 
-    is_member = db.execute("SELECT 1 FROM room_user_relation WHERE room_id = ? AND user_id = ?", @room_id, active_user_id).first
-    is_owner = db.execute("SELECT 1 FROM room WHERE id = ? AND owner_id = ?", @room_id, active_user_id).first
-
-    if is_member && is_owner
+    if user_obj.member_of_room?(@room_id) && user_obj.owner_of_room?(@room_id)
         slim(:"rooms/edit")
     else
-        session[:error] = "You do not have permission"
+        Mer::ErrorHandler.register(session, 'You do not have permission.')
         redirect('/error')
     end
 end
 
+# Update a room
+#
+# @param id [Integer] the ID of the room to update
+# @param name [String] the new name of the room
+# @see Mer::User#owner_of_room?
+# @see Mer::Room#load_existing
+# @see Mer::Room#update_name
 post('/rooms/:id/update') do
-    db = Database::connect(DB_PATH)
-    active_user_id = session[:id]
+    db = Mer::Database.new
+    user_obj = Mer::User.new(session)
+    user_obj.load_existing(session[:user][:id])
     room_id = params[:id].to_i
   
-    is_owner = db.execute("SELECT 1 FROM room WHERE owner_id = ? AND id = ?", active_user_id, room_id).first
-  
-    if is_owner
-      new_name = params[:name]
-  
-      if new_name.empty?
-        session[:error] = "Room name cannot be empty"
-        redirect('/error')
-      elsif new_name.length > 16
-        session[:error] = "Room name cannot exceed 16 characters"
-        redirect('/error')
-      else
-        db.execute("UPDATE room SET name = ? WHERE id = ?", new_name, room_id)
+    if user_obj.owner_of_room?(room_id)
+        new_name = params[:name]
+        room_obj = Mer::Room.new(session)
+        room_obj.load_existing(room_id)
+        room_obj.update_name(new_name)
         redirect("/rooms/#{room_id}")
-      end
     else
-      session[:error] = "You do not have permission to update this room"
-      redirect('/error')
+        Mer::ErrorHandler.register(session, 'You do not have permission to update this room.')
+        redirect('/error')
     end
 end
 
-# post('/rooms/:id/update') do 
-#     # check permissions
-# end
-
+# Delete a room
+#
+# @param id [Integer] the ID of the room to delete
+# @see Mer::User#owner_of_room?
+# @see Mer::Room#delete
 post('/rooms/:id/delete') do 
     # check permissions
 end
@@ -462,45 +452,20 @@ end
 # -> message #
 ##############
 
+# Create a new message in a room
+#
+# @param room_id [Integer] the ID of the room
+# @param content [String] the content of the message
+# @see Mer::Message#create
 post('/message') do 
-    user_id = session[:id].to_i
-
-    if user_id
-        room_id = params[:room_id].to_i
-
-        if room_id
-            db = Database::connect(DB_PATH)
-            p room_id
-            p user_id
-            is_member = db.execute("SELECT 1 FROM room_user_relation WHERE room_id = ? AND user_id = ?", room_id, user_id).first
-
-            if is_member
-                message_content = params[:content]
-
-                if message_content.empty?
-                    session[:error] = "Your message was empty."
-                    redirect('/error')
-                end
-
-                if message_content.length > 200
-                    p "message length"
-                    session[:error] = "The your message exceded 200 characters."
-                    redirect('/error')
-                end
-
-                db.execute("INSERT INTO message(content, room_id, owner_id) VALUES (?, ?, ?)", message_content, room_id, user_id)
-            else
-                p "Not a member"
-                session[:error] = "You are not a member of this room."
-                redirect('/error')
-            end
-        else
-            session[:error] = "No room_id found."
-            redirect('/error')
-        end
-        
+    room_id = params[:room_id].to_i
+    message_content = params[:content]
+    if room_id
+        db = Mer::Database.new
+        message_obj = Mer::Message.new(session)
+        message_obj.create(message_content, room_id)
     else
-        session[:error] = "You are not logged in."
+        Mer::ErrorHandler.register(session, 'No room_id found.')
         redirect('/error')
     end
 
@@ -513,18 +478,27 @@ end
 #    -> :id  #
 ##############
 
+# Delete a message
+#
+# @param id [Integer] the ID of the message to delete
+# @see Mer::User#owner_of_message?
+# @see Mer::User#owner_of_room?
+# @see Mer::Message#delete
 post('/message/:id/delete') do 
     message_id = params[:id].to_i
-    db = Database::connect(DB_PATH)
+    db = Mer::Database.new
 
-    message = db.execute("SELECT * FROM message WHERE id = ?", message_id).first
-    room = db.execute("SELECT * FROM room WHERE id = ?", message['room_id']).first
+    message = db.get_equal("message", "*", "id", message_id).first
+    room = db.get_equal("room", "id", "id", message['room_id']).first["id"]
 
-    if session[:id] == message['user_id'] || session[:id] == room['owner_id']
-        db.execute("DELETE FROM message WHERE id = ?", message_id)
+    user_obj = Mer::User.new(session)
+    user_obj.load_existing(session[:user][:id])
+
+    if user_obj.owner_of_message?(message_id) || user_obj.owner_of_room?(message['room_id'])
+        db.delete("message", "id", message_id)
         redirect back
     else
-        session[:error] = "You do not have permission"
+        Mer::ErrorHandler.register(session, Mer::ErrorMessage::UNAUTHORIZED)
         redirect('/error')
     end
 end
@@ -534,42 +508,30 @@ end
 # -> admin   #
 ##############
 
+# Display the admin dashboard
+#
 get('/admin/') do 
-    db = Database::connect(DB_PATH)
-    active_user_id = session[:id]
-
-    active_user_result = db.execute("SELECT * FROM user WHERE id=?", active_user_id).first
-
-    puts "current user type: #{active_user_result['type']}\npermitted user type: #{UserType::ADMIN}"
-
-    if active_user_result['type'] == UserType::ADMIN
-        p "granted"
-        session[:prev_action] = request.path_info
-        slim(:"admin/index")
-    else
-        session[:error] = "You do not have permission"
-        redirect('/error')
-    end
+    slim(:"admin/index")
 end
 
+# Delete all data and recreate the root user
+#
+# @see Mer::Database#delete
+# @see Mer::Database#create_root
 post('/admin/nuke') do
     # CHECK FOR ADMIN USER TYPE
-    db = Database::connect(DB_PATH)
+    db = Mer::Database.new
 
-    active_user_id = session[:id]
-    active_user_result = db.execute("SELECT * FROM user WHERE id=?", active_user_id).first
-
-    if active_user_result['type'] == UserType::ADMIN
-        db.execute("DELETE FROM room")
-        db.execute("DELETE FROM room_user_relation")
-        db.execute("DELETE FROM room_tags_relation")
-        db.execute("DELETE FROM message")
+    db.delete("room")
+    db.delete("room_user_relation")
+    db.delete("room_tags_relation")
+    db.delete("message")
+    db.delete("user")
+    db.delete("tags")
     
-        redirect('/admin/')
-    end
+    db.create_root
 
-    session[:error] = "You do not have permission"
-    redirect('/error')
+    redirect('/admin/')
 end
 
 ##############
@@ -577,28 +539,25 @@ end
 # -> tags    #
 ##############
 
+# Display the form for creating a new tag
+#
 get('/tags/new') do
-    session[:prev_action] = request.path_info
     slim(:"tags/new")
 end
 
+# Create a new tag
+#
+# @param label [String] the label of the tag
+# @see Mer::Tag#register
 post('/tags') do 
-    # add permission check
-    # only admins should be able to create new tags
-    db = Database::connect(DB_PATH)
+    db = Mer::Database.new
+    tag_obj = Mer::Tag.new(session)
     label = params[:label]
-
-    if label.empty?
-        session[:error] = "One of the parameters were empty."
-        redirect('/error')
-    end
-
-    result = db.execute("SELECT id FROM tags WHERE label=?", label)
-    if result.empty?
-        db.execute("INSERT INTO tags(label) VALUES (?)", label)
+    begin
+        tag_obj.register(label)
         redirect('/')
-    else  
-        session[:error] = "Tag already exists"
+    rescue => e
+        puts e
         redirect('/error')
     end
 end

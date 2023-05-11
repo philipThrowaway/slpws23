@@ -6,7 +6,7 @@ div.container-fluid.mt-3
             form action="/rooms" method="post"
                 div.mb-3
                     label.form-label = "Room name"
-                    input.form-control type="text" name="name" placeholder="The name of the room" required=true maxlength=16 
+                    input.form-control type="text" name="name" placeholder="The name of the room" required=true maxlength=Mer::Constants::MAX_ROOMNAME_LENGTH 
                 div.input-group.mb-3
                     - if @tags
                         label.input-group-text for="inputTags" = "Tags"

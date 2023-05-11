@@ -18,13 +18,13 @@ html lang="en" data-bs-theme="dark"
                     span.navbar-toggler-icon
                 div.collapse.navbar-collapse#navbarSupportedContent
                     ul.navbar-nav.me-auto.mb-2.mb-lg-0
-                        - if defined?(session[:id])
+                        - if defined?(session[:user][:id])
                             li.nav-item
                                 a.nav-link href="/rooms/" Rooms
                             li.nav-item
                                 a.nav-link href="/admin/" Admin
                             li.nav-item
-                                a.nav-link href="/users/#{session[:id]}" Profile
+                                a.nav-link href="/users/#{session[:user][:id]}" Profile
                         - else
                             li.nav-item
                                 a.nav-link href="/login" Login

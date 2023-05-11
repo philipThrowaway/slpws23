@@ -6,5 +6,5 @@ div.container-fluid.mt-3
             form action="/users/#{@user_id}/update" method="post"
                 div.mb-3
                     label.form-label = "Username"
-                    input.form-control type="text" name="username" placeholder="The username" required=true maxlength=16 
+                    input.form-control type="text" name="username" placeholder="The username" required=true maxlength=Mer::Constants::MAX_USERNAME_LENGTH 
                 button.btn.btn-primary type="submit" = "Update"

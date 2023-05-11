@@ -1,15 +1,15 @@
 div.container-fluid.mt-3
     div.card
-        div.card-header = @result['username']
+        div.card-header = @username
         div.card-body
             h5.card-title Available options
             - if @same_user || @admin
                 div.mb-3
-                    form action="/users/#{@result['id']}/edit" method="get"
+                    form action="/users/#{@id}/edit" method="get"
                         button.btn.btn-primary type="submit" = "Edit"
-                div.mb-3
-                    form action="/users/#{@result['id']}/delete" method="post"
-                        button.btn.btn-primary type="submit" = "Delete"
+                / div.mb-3
+                /     form action="/users/#{@id}/delete" method="post"
+                /         button.btn.btn-primary type="submit" = "Delete"
             - if @same_user
                 form action="/signout" method="get"
                     button.btn.btn-primary type="submit" = "Sign out"
