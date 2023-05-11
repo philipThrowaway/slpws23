@@ -21,9 +21,8 @@ html lang="en" data-bs-theme="dark"
                         - if defined?(session[:id])
                             li.nav-item
                                 a.nav-link href="/rooms/" Rooms
-                                - if defined?(session[:admin])
-                                    li.nav-item
-                                        a.nav-link href="/admin/" Admin
+                            li.nav-item
+                                a.nav-link href="/admin/" Admin
                             li.nav-item
                                 a.nav-link href="/users/#{session[:id]}" Profile
                         - else

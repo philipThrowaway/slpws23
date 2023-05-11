@@ -5,102 +5,181 @@ require 'bcrypt'
 
 require_relative './model.rb'
 
+# NEEDS TO BE STORED IN SESSION
+# $error_obj = Mer::ErrorHandler.new
+
+# db = Mer::Database.new(DB_PATH)
+# user = Mer::User.new(db.get)
+# user.create_root
+
+# before do 
+#     if session[:id].nil? && !AUTH.include?(request.path_info) && request.path_info != '/error'
+#       session[:error] = 'You need to be logged in'
+#       redirect('/error')
+#     elsif !session[:id].nil? && AUTH.include?(request.path_info)
+#       p 'redirecting to previous action'
+#       redirect(session[:action])
+#     end
+# end
+
 enable :sessions
 
-# REMEMBER TO IMPLEMENT CLEAN UP OF DATA
-# IN DATABASE IF THAT DATA IS DELETED
-
-# constants
 DB_PATH ||= 'db/database.db'
-AUTH = ['/', '', '/login', '/register', '/users', '/retry']
 
-def create_admin_user
-  db = Database::connect(DB_PATH)
-  result = db.execute("SELECT id FROM user WHERE username=?", "admin")
-  if result.empty?
-    pw_digest = BCrypt::Password.create("admin")
-    db.execute("INSERT INTO user(type, username, pw_digest) VALUES (?, ?, ?)", UserType::ADMIN, "admin", pw_digest)
-  end
+NOT_SIGNED_IN_ALLOWED ||= ['/login', '/register']
+# FIX PERMS
+NOT_SIGNED_IN_DISALLOWED ||= ['/users', '/rooms/']
+ADMIN_ONLY ||= ['/admin']
+
+# create admin account on initialization
+# -> todo!!!
+# p.s. do it directly from Database class...
+
+def handle_error(error_message)
+    Mer::ErrorHandler.register(session, error_message)
+    request.path_info = '/'
+    redirect('/error')
 end
 
-create_admin_user
+before do
+    path_info = request.path_info
+    puts path_info
 
-before do 
-    p request.path_info
+    if NOT_SIGNED_IN_DISALLOWED.include?(path_info) && Mer::Authorization.signed_in?(session)
+        if not Mer::Authorization.valid?(session)
+            handle_error(Mer::ErrorMessage::CREDENTIALS_INVALID)
+        end
+    end
 
-    if session[:id].nil? && !AUTH.include?(request.path_info) && request.path_info != '/error'
-      session[:error] = 'You need to be logged in'
-      redirect('/error')
-    elsif !session[:id].nil? && AUTH.include?(request.path_info)
-      p 'redirecting to previous action'
-      redirect(session[:prev_action])
+    if request.get?
+        if NOT_SIGNED_IN_ALLOWED.include?(path_info) && Mer::Authorization.signed_in?(session)
+            handle_error(Mer::ErrorMessage::ALREADY_SIGNED)
+        elsif NOT_SIGNED_IN_DISALLOWED.include?(path_info) && !Mer::Authorization.signed_in?(session)
+            handle_error(Mer::ErrorMessage::NEED_SIGNED)
+        elsif ADMIN_ONLY.include?(path_info) && !Mer::Authorization.admin?(session)
+            handle_error(Mer::ErrorMessage::UNAUTHORIZED)
+        end
     end
 end
 
-post('/retry') do
-    p 'retry detected'
-    redirect(session[:prev_action] || '/')
+after do
+    if request.get? && !request.path_info.include?('error')
+        if response.status == 404
+            puts "setting previous action to '/'"
+            Mer::ErrorHandler.register(session, Mer::ErrorMessage::NOT_FOUND)
+            session[:action] = '/'
+            redirect('/error')
+        else
+            puts "setting previous action to #{request.path_info}"
+            session[:action] = request.path_info
+        end
+    end
 end
 
 get('/error') do 
-    @error_message = session[:error]
-    @prev_action = session[:prev_action]
-    p "previous action was: #{@prev_action}"
-    slim :error
+    session[:action] = '/' if session[:action].nil?
+    p "previous action was: #{session[:action]}"
+    slim(:error)
 end
 
 get('/') do
     redirect('/login')
 end
 
+#############
+# PRE-LOGIN #
+############# 
+
 get('/login') do
-    session[:prev_action] = request.path_info
     slim(:login)
 end
 
+get('/register') do
+    slim(:"users/new")
+end
+
+post('/users') do    
+    username = params[:username]
+    password = params[:password]
+    password_confirm = params[:password_confirm]
+
+    if password != password_confirm
+        Mer::ErrorHandler.register(session, Mer::ErrorMessage::PASSWORD_DIFFERENT)
+        redirect('/error')
+    end
+
+    user_obj = Mer::User.new(session)
+    begin
+        user_obj.register(username, password, Mer::UserType::USER)
+    rescue
+        redirect('/error')
+    end
+end
+
 post('/login') do
-    db = Database::connect(DB_PATH)
     username = params[:username]
     password = params[:password]
 
-    if username.empty? || password.empty?
-        session[:error] = "One of the parameters were empty."
-        redirect('/error')
-    end
-  
-    result = db.execute("SELECT * FROM user WHERE username=?", username).first
-    if result
-      pw_digest = result["pw_digest"]
-      id = result["id"]
-      type = result["type"]
-  
-      if BCrypt::Password.new(pw_digest) == password
-        if type == UserType::ADMIN
-            p "admin has logged in"
-            session[:admin] = 1 
-        end
-        session[:id] = id
+    user_obj = Mer::User.new(session)
+    begin
+        user_obj.login(username, password)
         redirect('/rooms/')
-      else  
-        # wrong password
-        session[:error] = "Wrong password"
+    rescue => e
+        puts e.message
         redirect('/error')
-      end
-    else  
-      # user doesn't exist
-      session[:error] = "User doesn't exist"
-      redirect('/error')
     end
 end
 
-get('/register') do
-    session[:prev_action] = request.path_info
-    slim(:"users/new")
-end
+##############
+# POST-LOGIN #
+# -> user    #
+##############
 
 get('/signout') do 
     session.clear
     redirect('/')
+end
+
+##############
+# POST-LOGIN #
+# -> user    #
+#    -> :id  #
+##############
+
+get('/users/:id') do 
+    db = Database::connect(DB_PATH)
+    active_user_id = session[:id]
+    user_id = params[:id].to_i
+
+    @result = db.execute("SELECT * FROM user WHERE id=?", user_id).first
+
+    if @result.nil?
+        session[:error] = "User doesn't exist"
+        redirect('/error')
+    end
+
+    @active_user_result = db.execute("SELECT * FROM user WHERE id=?", active_user_id).first
+
+    @same_user = false
+    @admin = false
+
+    if user_id == active_user_id
+        p "same user"
+        @same_user = true
+    end
+
+    p @result
+
+    if @active_user_result['type'] == UserType::ADMIN
+        p "is admin"
+        @admin = true
+    end
+
+    p @same_user
+    p @admin
+
+    session[:prev_action] = request.path_info
+    slim(:"users/index")
 end
 
 get('/users/:id/edit') do 
@@ -146,84 +225,18 @@ post('/users/:id/delete') do
     end
 end
 
-get('/users/:id') do 
-    db = Database::connect(DB_PATH)
-    active_user_id = session[:id]
-    user_id = params[:id].to_i
-
-    @result = db.execute("SELECT * FROM user WHERE id=?", user_id).first
-
-    if @result.nil?
-        session[:error] = "User doesn't exist"
-        redirect('/error')
-    end
-
-    @active_user_result = db.execute("SELECT * FROM user WHERE id=?", active_user_id).first
-
-    @same_user = false
-    @admin = false
-
-    if user_id == active_user_id
-        p "same user"
-        @same_user = true
-    end
-
-    p @result
-
-    if @active_user_result['type'] == UserType::ADMIN
-        p "is admin"
-        @admin = true
-    end
-
-    p @same_user
-    p @admin
-
-    session[:prev_action] = request.path_info
-    slim(:"users/index")
-end
-
-post('/users') do
-    db = Database::connect(DB_PATH)
-    username = params[:username]
-    password = params[:password]
-    password_confirm = params[:password_confirm]
-
-    if username.empty? || password.empty? || password_confirm.empty?
-        session[:error] = "One of the parameters were empty."
-        redirect('/error')
-    end
-
-    if username.scan(/\s/).length > 0 || password.scan(/\s/).length > 0
-        session[:error] = "One of the parameters had a whitespace character in it."
-        redirect('/error')
-    end
-
-    result = db.execute("SELECT id FROM user WHERE username=?", username).first
-    if result.nil?
-        if (password == password_confirm)
-          pw_digest = BCrypt::Password.create(password)
-          
-          db.execute("INSERT INTO user(username, type, pw_digest) VALUES (?, ?, ?)", username, UserType::USER, pw_digest)
-          redirect('/')
-        else 
-            # passwords don't match
-            session[:error] = "Password doesn't match"
-            redirect('/error')
-        end
-    else  
-        session[:error] = "User exists"
-        redirect('/error')
-    end
-end
+##############
+# POST-LOGIN #
+# -> rooms   #
+##############a
 
 get('/rooms/') do
-    id = session[:id]
-    db = Database::connect(DB_PATH)
-  
+    id = session[:user][:id]
+
+    db = Mer::Database.new
     selected_tags = params[:tags]
   
     if selected_tags && selected_tags.any?
-      # filter by selected tags
       tag_ids = selected_tags.map(&:to_i).join(',')
       @rooms = db.execute("
         SELECT r.id AS room_id, r.name AS room_name, u.username AS owner_username,
@@ -248,11 +261,151 @@ get('/rooms/') do
         GROUP BY r.id", id)
     end
   
-    @tags = db.execute("SELECT * FROM tags")
-  
-    session[:prev_action] = request.path_info
+    @tags = db.select("tags", "*")
+
     slim(:"rooms/index")
 end  
+
+get('/rooms/new') do
+    db = Mer::Database.new
+    @tags = db.select("tags", "*")
+    slim(:"rooms/new")
+end
+
+get('/rooms/login') do 
+    slim(:"rooms/login")
+end
+
+post('/rooms') do 
+    db = Mer::Database.new
+    name = params[:name]
+    tags = params[:tags]
+
+    room_obj = Mer::Room.new(session)
+    begin
+        room_obj.register(name, tags)
+        redirect('/rooms/')
+    rescue => e
+        puts e
+        redirect('/error')
+    end
+
+
+    # db = Database::connect(DB_PATH)
+    # name = params[:name]
+    # tag_ids = params[:tags]
+    # owner_id = session[:id]
+
+    # if name.length > 16
+    #     p "name length"
+    #     session[:error] = "The room name must be at most 16 characters long."
+    #     redirect('/error')
+    # end
+
+    # if tag_ids.nil?
+    #     p "no tags provided"
+    #     session[:error] = "A room needs to have tags."
+    #     redirect('/error')
+    # end
+
+    # invite = unique_invite()
+
+    # db.execute("INSERT INTO room(name, invite, owner_id) VALUES (?, ?, ?)", name, invite, owner_id)
+    # room_id = db.last_insert_row_id
+
+    # tag_ids.each do |tag_id|
+    #     tag = tag_id.to_i
+    #     db.execute("INSERT INTO room_tags_relation(room_id, tag_id) VALUES (?, ?)", room_id, tag)
+    # end    
+
+    # # maybe add a check?
+    # db.execute("INSERT INTO room_user_relation(room_id, user_id) VALUES (?, ?)", room_id, owner_id)
+    
+    # redirect('/rooms/')
+end
+
+post('/rooms/login') do 
+    invite = params[:invite]
+
+    room_obj = Mer::Room.new(session)
+    begin
+        room_obj.login(invite)
+        redirect('/rooms/')
+    rescue => e
+        puts e.message
+        redirect('/error')
+    end
+
+    # db = Database::connect(DB_PATH)
+    # user_id = session[:id]
+    # room_invite = params[:invite]
+
+    # if room_invite.empty?
+    #     session[:error] = "The invite was empty."
+    #     redirect('/error')
+    # end
+
+    # if room = db.execute("SELECT * FROM room WHERE invite = ?", room_invite).first
+    #     if db.execute("SELECT * FROM room_user_relation WHERE room_id=? AND user_id=?", room["id"], user_id).first
+    #         session[:error] = "You are already a member of that room"
+    #         redirect('/error')
+    #     else
+    #         db.execute("INSERT INTO room_user_relation(room_id, user_id) VALUES (?, ?)", room["id"], user_id)
+    #         redirect('/rooms/')
+    #     end  
+    # else
+    #     session[:error] = "Room doesn't exist"
+    #     redirect('/error')
+    # end
+end
+
+##############
+# POST-LOGIN #
+# -> rooms   #
+#    -> :id  #
+##############
+
+get('/rooms/:id') do 
+    @user_id = session[:id].to_i
+
+    if @user_id
+        @room_id = params[:id].to_i
+        db = Database::connect(DB_PATH)
+        is_member = db.execute("SELECT 1 FROM room_user_relation WHERE room_id = ? AND user_id = ?", @room_id, @user_id).first
+
+        if is_member
+            @room = db.execute("SELECT * FROM room WHERE id = ?", @room_id)
+
+            @messages = db.execute("
+                SELECT m.id AS message_id, m.room_id AS message_room_id, m.content AS message_content, m.owner_id AS message_owner, u.username AS message_owner_username
+                FROM message AS m
+                JOIN user AS u ON u.id = m.owner_id
+                WHERE m.room_id = ?
+                ", @room_id)
+            
+            p @messages
+
+            @invite = db.execute("
+                SELECT invite FROM room WHERE id = ?
+                ", @room_id).first[0]
+
+            session[:prev_action] = request.path_info
+            slim(:"rooms/show")
+        else
+            p "Not a member"
+            session[:error] = "You are not a member of this room."
+            redirect('/error')
+        end
+    else
+        session[:error] = "You are not logged in."
+        redirect('/error')
+    end
+end
+
+# get('/rooms/:id/edit') do 
+#     session[:prev_action] = request.path_info
+#     # check permissions
+# end
 
 get('/rooms/:id/edit') do 
     db = Database::connect(DB_PATH)
@@ -296,136 +449,18 @@ post('/rooms/:id/update') do
     end
 end
 
-get('/rooms/new') do
-    session[:prev_action] = request.path_info
-    db = Database::connect(DB_PATH)
-    @tags = db.execute("SELECT * FROM tags")
-    slim(:"rooms/new")
-end
-
-get('/rooms/login') do 
-    session[:prev_action] = request.path_info
-    slim(:"rooms/login")
-end
-
-post('/rooms/login') do 
-    db = Database::connect(DB_PATH)
-    user_id = session[:id]
-    room_invite = params[:invite]
-
-    if room_invite.empty?
-        session[:error] = "The invite was empty."
-        redirect('/error')
-    end
-
-    if room = db.execute("SELECT * FROM room WHERE invite = ?", room_invite).first
-        if db.execute("SELECT * FROM room_user_relation WHERE room_id=? AND user_id=?", room["id"], user_id).first
-            session[:error] = "You are already a member of that room"
-            redirect('/error')
-        else
-            db.execute("INSERT INTO room_user_relation(room_id, user_id) VALUES (?, ?)", room["id"], user_id)
-            redirect('/rooms/')
-        end  
-    else
-        session[:error] = "Room doesn't exist"
-        redirect('/error')
-    end
-end
-
-def unique_invite()
-    db = Database::connect(DB_PATH)
-    invite = (0...8).map { (65 + rand(26)).chr }.join
-    existing_room = db.execute("SELECT * FROM room WHERE invite = ?", invite).first
-    if existing_room
-        unique_invite()
-    end
-
-    return invite
-end
-
-post('/rooms') do 
-    db = Database::connect(DB_PATH)
-    name = params[:name]
-    tag_ids = params[:tags]
-    owner_id = session[:id]
-
-    if name.length > 16
-        p "name length"
-        session[:error] = "The room name must be at most 16 characters long."
-        redirect('/error')
-    end
-
-    if tag_ids.nil?
-        p "no tags provided"
-        session[:error] = "A room needs to have tags."
-        redirect('/error')
-    end
-
-    invite = unique_invite()
-
-    db.execute("INSERT INTO room(name, invite, owner_id) VALUES (?, ?, ?)", name, invite, owner_id)
-    room_id = db.last_insert_row_id
-
-    tag_ids.each do |tag_id|
-        tag = tag_id.to_i
-        db.execute("INSERT INTO room_tags_relation(room_id, tag_id) VALUES (?, ?)", room_id, tag)
-    end    
-
-    # maybe add a check?
-    db.execute("INSERT INTO room_user_relation(room_id, user_id) VALUES (?, ?)", room_id, owner_id)
-    
-    redirect('/rooms/')
-end
-
-get('/rooms/:id') do 
-    @user_id = session[:id].to_i
-
-    if @user_id
-        @room_id = params[:id].to_i
-        db = Database::connect(DB_PATH)
-        is_member = db.execute("SELECT 1 FROM room_user_relation WHERE room_id = ? AND user_id = ?", @room_id, @user_id).first
-
-        if is_member
-            @room = db.execute("SELECT * FROM room WHERE id = ?", @room_id)
-
-            @messages = db.execute("
-                SELECT m.id AS message_id, m.room_id AS message_room_id, m.content AS message_content, m.owner_id AS message_owner, u.username AS message_owner_username
-                FROM message AS m
-                JOIN user AS u ON u.id = m.owner_id
-                WHERE m.room_id = ?
-                ", @room_id)
-            
-            p @messages
-
-            @invite = db.execute("
-                SELECT invite FROM room WHERE id = ?
-                ", @room_id).first[0]
-
-            session[:prev_action] = request.path_info
-            slim(:"rooms/show")
-        else
-            p "Not a member"
-            session[:error] = "You are not a member of this room."
-            redirect('/error')
-        end
-    else
-        session[:error] = "You are not logged in."
-        redirect('/error')
-    end
-end
-
-get('/rooms/:id/edit') do 
-    session[:prev_action] = request.path_info
-    # check permissions
-end
-
-post('/rooms/:id/update') do 
-    # check permissions
-end
+# post('/rooms/:id/update') do 
+#     # check permissions
+# end
 
 post('/rooms/:id/delete') do 
     # check permissions
 end
+
+##############
+# POST-LOGIN #
+# -> message #
+##############
 
 post('/message') do 
     user_id = session[:id].to_i
@@ -472,6 +507,12 @@ post('/message') do
     redirect('/rooms/' + room_id.to_s)
 end
 
+##############
+# POST-LOGIN #
+# -> message #
+#    -> :id  #
+##############
+
 post('/message/:id/delete') do 
     message_id = params[:id].to_i
     db = Database::connect(DB_PATH)
@@ -487,6 +528,11 @@ post('/message/:id/delete') do
         redirect('/error')
     end
 end
+
+##############
+# POST-LOGIN #
+# -> admin   #
+##############
 
 get('/admin/') do 
     db = Database::connect(DB_PATH)
@@ -526,6 +572,11 @@ post('/admin/nuke') do
     redirect('/error')
 end
 
+##############
+# POST-LOGIN #
+# -> tags    #
+##############
+
 get('/tags/new') do
     session[:prev_action] = request.path_info
     slim(:"tags/new")
@@ -550,9 +601,4 @@ post('/tags') do
         session[:error] = "Tag already exists"
         redirect('/error')
     end
-end
-
-post('/signout') do 
-    session.clear
-    redirect('/')
 end

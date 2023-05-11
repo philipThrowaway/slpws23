@@ -3,6 +3,6 @@ div.container-fluid.mt-3
         div.card-header Error
         div.card-body
             h5.card-title = "Whoops!"
-            h6.card-subtitle.mb-2.text-body-secondary = @error_message
-            form action="/retry" method="post"
-                button.btn.btn-primary type="submit" = "Retry"
+            h6.card-subtitle.mb-2.text-body-secondary = session[:error]
+            form action = session[:action] method="get"
+                button.btn.btn-primary type="submit" = "Go back"

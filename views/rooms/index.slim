@@ -29,6 +29,6 @@ div.container
                         p.mb-0 = member_string
                     div.btn-group
                         a.btn.btn-primary href="/rooms/#{room['room_id']}" = "Visit"
-                        - if room['owner_id'] == session[:id]
+                        - if room['owner_id'] == session[:user][:id]
                             a.btn.btn-primary href="/rooms/#{room['room_id']}/edit" = "Edit"
                         a.btn.btn-primary href="#" = "Leave"
