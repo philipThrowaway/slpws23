@@ -484,6 +484,10 @@ module Mer
         #
         # @param username [String] the new username
         def update_username(username)
+            unless Mer::Validation.username(username)
+                Mer::ErrorHandler.raise_error(@session, Mer::ErrorMessage::USERNAME_INVALID)
+            end
+
             @username = username
             db = Mer::Database.new
             db.update("user", { username: @username }, "id", @id)
@@ -608,6 +612,10 @@ module Mer
         #
         # @param roomname [String] the new room name
         def update_name(roomname)
+            unless Mer::Validation.username(roomname)
+                Mer::ErrorHandler.raise_error(@session, Mer::ErrorMessage::ROOMNAME_INVALID)
+            end
+
             @roomname = roomname
             db = Mer::Database.new
             db.update("room", { name: @roomname }, "id", @id)
