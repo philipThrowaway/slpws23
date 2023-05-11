@@ -33,6 +33,7 @@ before do
 
     if not request.path_info == '/error'
         if Mer::Authorization.signed_in?(session)
+            puts "amount of tokens: #{session[:token_bucket]}"
             current_time = Time.now.to_i
             refill_rate = 5 # maximum requests per second
             capacity = 5 # maximum tokens in the bucket
@@ -54,6 +55,8 @@ before do
                 Mer::ErrorHandler.register(session, Mer::ErrorMessage::COOLDOWN)
                 redirect('/error')
             end
+        else
+            session[:token_bucket] = 1 # the bucket needs to have a starting value
         end
     end
 

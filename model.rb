@@ -266,7 +266,6 @@ module Mer
             @db.execute(query, *variables)
         end               
     
-
         # Performs a SELECT query on the specified table and retrieves the specified attribute.
         #
         # @param table [String] the name of the table
